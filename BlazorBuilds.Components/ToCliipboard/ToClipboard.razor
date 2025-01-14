@@ -1,0 +1,180 @@
+﻿@inject IJSRuntime _jsRuntime;
+
+<div class="@GlobalValues.ToClipboard_Class" data-static="@GlobalValues.GetStyleAsValue(StyleAs)" style="@($"{GlobalValues.Button_Min_Width_Var_Name}:{MinWidth}")">
+
+    <span id="@_statusTextControlID" class="@GlobalValues.ToClipboard_SR_Only_Class" role="status">@_ariaStatusText</span>
+    <span id="@_describedByControlID" class="@GlobalValues.ToClipboard_SR_Only_Class" aria-hidden="true">@_unavailableMessage</span>
+
+    <button class="@GlobalValues.ToClipboard_Button_Class" @onclick="() => CopyToClipboard(_clipboardText)" type="button"
+    aria-disabled="@_ariaDisabled.ToString().ToLower()" aria-describedby="@_describedByControlID">
+
+        <span class="@BuildClassList(GlobalValues.ToClipboard_Icon_Class,_copyIconClass)" aria-hidden="true"></span>
+
+        <span class="@GlobalValues.ToClipboard_Text_Class">@GetButtonText(_currentCopyStatus)</span>
+
+        <span class="@BuildClassList(@GlobalValues.ToClipboard_Icon_Class, GetStatusIcon(_currentCopyStatus))" aria-hidden="true"></span>
+
+    </button>
+
+</div>
+
+@code {
+
+    [Parameter, EditorRequired] public string CopyButtonText   { get; set; } = default!;
+    [Parameter, EditorRequired] public string FailedButtonText { get; set; } = default!;
+
+    [Parameter] public string? ClipboardText      { get; set; }
+    [Parameter] public string? CopyingText        { get; set; }
+    [Parameter] public string? UnavailableMessage { get; set; }
+    [Parameter] public string? CopiedMessage      { get; set; }
+    [Parameter] public string? FailedMessage      { get; set; }
+    [Parameter] public string? CopyIconClass      { get; set; }
+    [Parameter] public string? SuccessIconClass   { get; set; }
+    [Parameter] public string? FailedIconClass    { get; set; }
+    [Parameter] public string? CopyingIconClass   { get; set; }
+    [Parameter] public bool    SignalStart        { get; set; } = false;
+    [Parameter] public decimal MinWidth           { get; set; } = 0;
+    [Parameter] public bool    Disabled           { get; set; } = false;
+    [Parameter] public StyleAs StyleAs            { get; set; } = StyleAs.Dynamic;
+
+    [Parameter] public EventCallback<ClipboardResult> OnTextCopied    { get; set;}
+
+    private CopyStatus _currentCopyStatus = CopyStatus.None;
+    private string?    _clipboardText     = default;
+
+    private string _statusTextControlID  = Guid.NewGuid().ToString();
+    private string _describedByControlID = Guid.NewGuid().ToString();
+    private string _copyingText          = GlobalValues.ToClipboard_Copying_Text;
+    private string _failedMessage        = GlobalValues.ToClipboard_Failed_Msg;
+    private string _copiedMessage        = GlobalValues.ToClipboard_Copied_Msg;
+    private string _copyIconClass        = GlobalValues.Copy_Icon_Name_Class;
+    private string _copyingIconClass     = GlobalValues.Copying_Icon_Name_Class;
+    private string _successIconClass     = GlobalValues.Success_Icon_Name_Class;
+    private string _failedIconClass      = GlobalValues.Fail_Icon_Name_Class;
+    private string _unavailableMessage   = String.Empty;
+    private string _ariaStatusText       = String.Empty;
+    private bool   _ariaDisabled         = true;
+
+    protected override void OnParametersSet()
+    {
+        if (true == String.IsNullOrWhiteSpace(CopyButtonText))   throw new ArgumentNullException(nameof(CopyButtonText), GlobalValues.Copy_Button_Text_Exception_Message);
+        if (true == String.IsNullOrWhiteSpace(FailedButtonText)) throw new ArgumentNullException(nameof(FailedButtonText), GlobalValues.Failed_Button_Text_Exception_Message);
+
+        _unavailableMessage = String.IsNullOrWhiteSpace(UnavailableMessage) ? GlobalValues.ToClipboard_Unavailable_Msg : UnavailableMessage.Trim();
+        _failedMessage      = String.IsNullOrWhiteSpace(FailedMessage)      ? GlobalValues.ToClipboard_Failed_Msg      : FailedMessage.Trim();
+        _copiedMessage      = String.IsNullOrWhiteSpace(CopiedMessage)      ? GlobalValues.ToClipboard_Copied_Msg      : CopiedMessage.Trim();
+        _copyingText        = String.IsNullOrWhiteSpace(CopyingText)        ? GlobalValues.ToClipboard_Copying_Text    : CopyingText.Trim();
+
+        _copyIconClass      = String.IsNullOrWhiteSpace(CopyIconClass)      ? GlobalValues.Copy_Icon_Name_Class        : CopyIconClass.Trim();
+        _copyingIconClass   = String.IsNullOrWhiteSpace(CopyingIconClass)   ? GlobalValues.Copying_Icon_Name_Class     : CopyingIconClass.Trim();
+        _failedIconClass    = String.IsNullOrWhiteSpace(FailedIconClass)    ? GlobalValues.Fail_Icon_Name_Class        : FailedIconClass.Trim();
+        _successIconClass   = String.IsNullOrWhiteSpace(SuccessIconClass)   ? GlobalValues.Success_Icon_Name_Class     : SuccessIconClass.Trim();
+
+        _ariaDisabled       = (String.IsNullOrWhiteSpace(ClipboardText) || true == Disabled) ? true : false;
+        _unavailableMessage = _ariaDisabled ? _unavailableMessage : String.Empty;
+
+        if (_clipboardText != ClipboardText && _currentCopyStatus != CopyStatus.Copying) _currentCopyStatus = CopyStatus.None;
+
+        _clipboardText = ClipboardText;
+    }
+
+    /*
+        * https://learn.microsoft.com/en-us/aspnet/core/blazor/components/rendering?view=aspnetcore-6.0#an-asynchronous-handler-involves-multiple-asynchronous-phases-1
+     */
+    private async Task CopyToClipboard(string? clipboardText)
+    {
+        if (true == _ariaDisabled) return;
+
+        if (_currentCopyStatus == CopyStatus.Copying)
+        {
+            /*
+                * Its a new event so it will render on yield and then on exit. As the status text says copying 
+                * we need to clear it and then change it back for the screen reader to detect a change and announce the text.
+            */
+            await SetAriaStatusText(CopyStatus.None,150);
+            await SetAriaStatusText(CopyStatus.Copying, 0);
+            return; 
+        }
+
+        ClipboardResult clipboardResult;
+
+        SetCopyStatus(CopyStatus.Copying);
+
+        /*
+            * When SignalStart is true it will cause a render due to the completion of await delay > 0 which yields control for the StateHasChanged (from componentbase) caused by the button click
+            * If you gave it zero time then its effectively synchronous and would not yield here. Another call to statehaschanged (a render request) would just be queued, you need to yiedl control
+        */
+        await SignalStart.WhenTrue(() => SetAriaStatusText(CopyStatus.Copying, 150));//Once rendered screen reader detects and announces
+
+        try
+        {   
+            //await clipboardText!.StartsWith("wait").WhenTrue(() => Task.Delay(4000));//For testing only remove
+            //clipboardText!.StartsWith("fail").WhenTrue(act_whenTrue:() => throw new Exception());//For testing only remove
+
+            await _jsRuntime.InvokeVoidAsync("navigator.clipboard.writeText", clipboardText);
+
+            clipboardResult = new(true);
+            SetCopyStatus(CopyStatus.Copied);
+
+            /*
+                * If SignalStart was false this would cause the button clicks statehaschanged request ot render due to the delay > 0 otherwise no render here
+                * I have noticed that for NVDA it needs at least 100ms between frequent updates, more for narrator to have things announced
+            */
+            await SetAriaStatusText(CopyStatus.Copied, 350);//catch up for screen reader + extra time added to see animated icon
+        }
+        catch (Exception ex)
+        {
+            clipboardResult = new(false, ex);
+            SetCopyStatus(CopyStatus.Failed);
+            await SetAriaStatusText(CopyStatus.Failed, 150);
+        }
+
+        /*
+            * Need a render to ensure the copied message or failed message from the previous SetAriaStatus get in the if not in already.
+            * The parent will cause a render (request) if handling the event else we need to use StateHasChanged. And then use a yielding operation
+        */
+        await OnTextCopied.HasDelegate.WhenTrueElse(() => OnTextCopied.InvokeAsync(clipboardResult), () => InvokeAsync(StateHasChanged));
+
+        /*
+        *  There will be a render on exit so we need to clear the status message. Currently its a copied message but there has not been any time for
+        *  the screen reader to announce it. Whilst we clear the status variable we use a delay to give the the screen reader time to announce what it has
+        *  and whist that is happening the render will update the dom with the empty message.
+         */
+        await SetAriaStatusText(CopyStatus.None, 100);
+    }
+
+    private string GetButtonText(CopyStatus copyStatus)
+
+        => copyStatus switch{ CopyStatus.Failed => FailedButtonText, CopyStatus.Copying => _copyingText, _ => CopyButtonText };
+
+    private async Task SetAriaStatusText(CopyStatus copyStatus, int catchUpTimeMs = 0)
+    { 
+        _ariaStatusText = copyStatus switch 
+        {
+            CopyStatus.Failed  => _failedMessage,
+            CopyStatus.Copied  => _copiedMessage,
+            CopyStatus.Copying => _copyingText,
+            _                  => String.Empty
+        };
+        await Task.Delay(catchUpTimeMs);
+    }
+
+    private string GetStatusIcon(CopyStatus copyStatus)
+
+        => copyStatus switch
+        {
+            CopyStatus.Copied  =>  $"{_successIconClass} {GlobalValues.ToClipboard_Icon_Success_Class}",
+            CopyStatus.Failed  =>  $"{_failedIconClass} {GlobalValues.ToClipboard_Icon_Failure_Class}",
+            CopyStatus.Copying => _copyingIconClass,
+            _ => String.Empty
+        };
+
+    private void SetCopyStatus(CopyStatus copyStatus)
+
+        => _currentCopyStatus = copyStatus;
+
+    private string BuildClassList(params string[] classList)
+
+        => String.Join(" ", classList.Where(c => !string.IsNullOrWhiteSpace(c)));
+
+}

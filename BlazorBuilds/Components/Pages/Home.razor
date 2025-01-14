@@ -1,0 +1,61 @@
+﻿@page "/"
+
+<PageTitle>Home</PageTitle>
+<h1>Hello, <span style="text-decoration:line-through">world!</span> Accessible Copy to Clipboard Component</h1>
+
+<div class="mb-3"> 
+    <label for="textAreaNotes" class="form-label">Notes:</label>
+    <div style="display:flex; flex-direction:column;align-items:flex-end; gap:1rem;">
+        <textarea class="form-control" id="textAreaNotes" @bind="_notes" @bind:event="oninput" rows="5" />
+        <ToClipboard ClipboardText="@_notes" UnavailableMessage="Nothing to copy." CopyButtonText="Copy notes" FailedButtonText="Retry copy notes" 
+        CopiedMessage="Copied notes successfully." FailedMessage="Copying notes failed, please try again." MinWidth="16" OnTextCopied="HandleOnTextCopied" />
+    </div>
+</div>
+
+<div>
+    <label for="textboxUrl" class="form-label">Url:</label>
+    <div style="display:flex;gap:0.75rem;">
+        <input type="text" id="textboxUrl" class="form-control" @bind="@_url" @bind:event="oninput" />
+        <ToClipboard ClipboardText="@_url" UnavailableMessage="Nothing to copy." CopyButtonText="Copy url" FailedButtonText="Retry copy url"
+        CopiedMessage="Copied url to clipboard successfully." MinWidth="12" OnTextCopied="HandleOnTextCopied" SignalStart="true" />
+    </div>
+</div>
+
+<p class="mt-4">
+    <button class="btn btn-primary" @onclick="() => _clipboardResult = _notAvailable"> Clear result</button> Clipboard event: @_clipboardResult
+</p>
+
+<div class="mb-3">
+    <label for="textareaClipboardText" class="form-label">Paste from clipboard (just using Ctrl+V):</label>
+    <textarea class="form-control" id="textareaClipboardText" rows="5" />
+</div>
+
+<div style="display:flex;gap:0.75rem;margin-top:2rem;">
+    <button class="btn btn-primary" @onclick="HandleToggleCopyAll">Toggle Copy All</button>
+    <ToClipboard ClipboardText="@_clipboardText" Disabled="@_disabled" UnavailableMessage="@_unavailableMessage" CopyButtonText="Copy All" FailedButtonText="Retry copy all"  />
+</div>
+
+
+@code{
+    private const string _notAvailable = "N/A";
+
+    private string? _notes             = null;
+    private string _url                = "https://www.youtube.com";
+    private string _clipboardResult    = _notAvailable;
+    private string _unavailableMessage = "Pending form completion";
+    private bool   _disabled           = true;
+    private string _clipboardText      = String.Empty;
+
+    public async Task HandleOnTextCopied(ClipboardResult result)
+    {
+        _clipboardResult = result.ToString();
+        await Task.CompletedTask;
+    }
+
+    public void HandleToggleCopyAll()
+    {
+        _disabled           = !_disabled;
+        _unavailableMessage = _disabled ? "Pending form completion" : String.Empty;
+        _clipboardText      = "Some text after some process completed"; 
+    }
+}
