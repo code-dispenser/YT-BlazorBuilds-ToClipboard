@@ -120,7 +120,7 @@
   box-shadow: var(--control-box-shadow-2);
 }
 .to-clipboard__text {
-  font-size: 0.875rem;
+  font-size: var(--fs-label);
   white-space: nowrap;
 }
 .to-clipboard__icon {

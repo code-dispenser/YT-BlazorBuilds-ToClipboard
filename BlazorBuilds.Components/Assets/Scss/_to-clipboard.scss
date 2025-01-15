@@ -1,5 +1,5 @@
 ﻿.to-clipboard {
-    --_button-min-width: 10;//gets set to 0 or supplied component parameter value
+    --_button-min-width: 10; //gets set to 0 or supplied component parameter value
     position: relative;
     display: inline-flex;
     vertical-align: middle;
@@ -52,7 +52,7 @@
     }
 
     &__text {
-        font-size: 0.875rem;
+        font-size: var(--fs-label);
         white-space: nowrap;
     }
 
